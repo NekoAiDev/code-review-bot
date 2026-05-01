@@ -1,0 +1,39 @@
+name: 🐛 Bug 反馈
+description: 报告代码审核机器人本身的问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰地描述遇到了什么问题
+      placeholder: 审核机器人在处理 XXX 代码时出现了 YYY 错误...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 如何复现这个问题？
+      placeholder: |
+        1. 创建了一个 Issue
+        2. 粘贴了以下代码...
+        3. 审核结果出现了...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 你期望的正确行为是什么？
+      placeholder: 应该检测到 XXX 问题，但实际没有...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志（可选）
+      description: 粘贴相关的错误日志或截图
+      render: shell

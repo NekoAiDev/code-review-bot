@@ -1,0 +1,122 @@
+name: Code Review Bot
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+  label: write
+
+jobs:
+  # 自动分类：根据 Issue 模板自动打标签
+  classify:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    steps:
+      - name: Auto label
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const title = context.payload.issue.title;
+            const body = context.payload.issue.body || '';
+            const issueNumber = context.payload.issue.number;
+
+            const labels = [];
+
+            if (title.includes('[代码审核]') || title.includes('[Code Review]')) {
+              labels.push('review');
+            } else if (title.includes('[Bug]') || title.includes('[bug]')) {
+              labels.push('bug');
+            } else if (title.includes('[建议]') || title.includes('[Suggestion]')) {
+              labels.push('enhancement');
+            }
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: labels
+              });
+            }
+
+  # 代码审核：只在带 review 标签的 Issue 或 PR 中运行
+  review:
+    runs-on: ubuntu-latest
+    needs: classify
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.title, '[代码审核]')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.title, '[Code Review]')) ||
+      (github.event_name == 'pull_request')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff pylint bandit safety
+
+      - name: Run code review
+        id: review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python scripts/code_review.py
+
+      - name: Comment review report
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('review_report.md', 'utf8');
+            const issueNumber = context.issue.number || context.payload.number;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: report
+            });
+
+      - name: Update issue status
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('review_report.md', 'utf8');
+            const issueNumber = context.issue.number || context.payload.number;
+
+            // 根据报告内容添加审核结果标签
+            if (report.includes('审核通过') && !report.includes('审核未通过')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['review-passed']
+              });
+            } else if (report.includes('审核未通过')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['review-failed']
+              });
+            }

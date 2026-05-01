@@ -1,0 +1,68 @@
+name: 📝 代码审核
+description: 提交代码进行自动审核，检测安全问题、合规性和潜在 Bug
+title: "[代码审核] "
+labels: [review]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 欢迎使用代码审核服务！
+        
+        请在下方粘贴你的代码，审核机器人会自动检测：
+        - 🔒 **安全漏洞** — 危险函数调用、网络请求、文件操作等
+        - 📋 **代码规范** — 代码风格、命名规范、文档完整性
+        - 🐛 **潜在 Bug** — 逻辑错误、未处理异常、类型问题
+        
+        > ⏱ 审核通常在几分钟内完成，结果会自动评论在此 Issue 下方。
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: 编程语言
+      description: 选择你提交代码的编程语言
+      options:
+        - Python
+        - JavaScript
+        - TypeScript
+        - Java
+        - Go
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: 代码内容
+      description: |
+        粘贴你的代码。支持单个或多个代码块。
+        例如：
+        ```python
+        def hello():
+            print("Hello World")
+        ```
+      placeholder: |
+        在这里粘贴你的代码...
+        请使用代码块格式 (```)
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 代码说明（可选）
+      description: 简要描述这段代码的功能和用途
+      placeholder: |
+        这段代码实现了 XXX 功能，用于 YYY 场景...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 确认事项
+      description: 请在提交前确认以下事项
+      options:
+        - label: 我确认这段代码是我自己编写的（或获得授权的）
+          required: true
+        - label: 我确认代码中不包含敏感信息（密码、Token、密钥等）
+          required: true
