@@ -7,13 +7,15 @@ body:
     attributes:
       value: |
         ## 欢迎使用代码审核服务！
-        
-        请在下方粘贴你的代码，审核机器人会自动检测：
+
+        请在下方 **代码内容** 栏粘贴你的代码，审核机器人会自动检测：
         - 🔒 **安全漏洞** — 危险函数调用、网络请求、文件操作等
         - 📋 **代码规范** — 代码风格、命名规范、文档完整性
         - 🐛 **潜在 Bug** — 逻辑错误、未处理异常、类型问题
-        
+
         > ⏱ 审核通常在几分钟内完成，结果会自动评论在此 Issue 下方。
+        >
+        > 💡 提示：代码请务必填在 **代码内容** 栏，不要填在代码说明栏。
 
   - type: dropdown
     id: language
@@ -33,17 +35,20 @@ body:
   - type: textarea
     id: code
     attributes:
-      label: 代码内容
+      label: ⬇️ 代码内容（请在此处粘贴代码）
       description: |
-        粘贴你的代码。支持单个或多个代码块。
-        例如：
+        **请将你的代码粘贴在这里。** 使用代码块格式包裹，例如：
         ```python
         def hello():
             print("Hello World")
         ```
+        支持多个代码块，审核机器人会逐一检查。
       placeholder: |
         在这里粘贴你的代码...
-        请使用代码块格式 (```)
+        请务必用 ``` 包裹代码，例如：
+        ```python
+        你的代码
+        ```
       render: python
     validations:
       required: true
@@ -51,10 +56,11 @@ body:
   - type: textarea
     id: description
     attributes:
-      label: 代码说明（可选）
-      description: 简要描述这段代码的功能和用途
+      label: 📝 代码说明（纯文字描述，不要填代码）
+      description: 简要描述这段代码的功能和用途，例如"实现了XXX功能"
       placeholder: |
         这段代码实现了 XXX 功能，用于 YYY 场景...
+        （注意：请勿在此处粘贴代码，代码请填在上方的代码内容栏）
 
   - type: checkboxes
     id: checklist
