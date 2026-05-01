@@ -1,6 +1,6 @@
-name: 📝 代码审核
-description: 提交代码进行自动审核，检测安全问题、合规性和潜在 Bug
-title: "[代码审核] "
+name: 🤖 提交代码
+description: 提交插件代码进行自动审核，检测安全问题、合规性和潜在 Bug
+title: "[提交代码] "
 labels: [review]
 body:
   - type: markdown
