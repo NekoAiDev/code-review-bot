@@ -1,4 +1,4 @@
-# Code Review Bot v2.0
+# Code Review Bot v2.1
 
 一个基于 GitHub Actions 的自动化代码审核机器人，能够检测安全问题、合规问题、敏感信息泄露和潜在 Bug，并给出 0-100 分的综合评分。
 
@@ -16,7 +16,8 @@
 | 📝 0-100 评分系统 | 自动评分 + 等级徽章（优秀/良好/需改进/不合格）|
 | 🏷 自动标签 | 根据评分自动打标签（score-excellent/good/needs-work/poor）|
 | 📂 可折叠报告 | 详细问题可折叠，报告清晰易读 |
-| 💬 评论触发 | 在 Issue 中 @code-review-bot 触发重新审核 |
+| 💬 评论指令 | 支持多条指令：重新审核、请求人工、审核通过/拒绝 |
+| 📧 管理员邮件通知 | 每次代码提交和审核完成后自动邮件通知管理员 |
 
 ## 📊 评分标准
 
@@ -52,74 +53,84 @@ your-repo/
 │   └── workflows/
 │       └── code-review.yml       # 审核工作流
 ├── scripts/
-│   └── code_review.py          # 核心审核脚本 v2.0
+│   └── code_review.py          # 核心审核脚本 v2.1
 └── requirements.txt             # Python 依赖（可省略，workflow 自动安装）
 ```
+
+### 配置 Secrets
+
+在仓库 Settings → Secrets and variables → Actions 中添加：
+
+| Secret 名称 | 说明 | 必需 |
+|-------------|------|------|
+| `MAIL_PASSWORD` | QQ 邮箱 SMTP 授权码（非 QQ 密码） | ✅ |
 
 ### 触发审核
 
 | 方式 | 触发条件 |
 |------|----------|
-| Issue 模板 | 选择「代码审核」模板，粘贴代码，提交 |
+| Issue 模板 | 选择「提交代码」模板，粘贴代码，提交 |
 | PR 自动 | 创建/更新 Pull Request 自动审核 |
-| 评论触发 | 在 Issue 中评论 `@code-review-bot` 重新审核 |
+| 评论触发 | 在 Issue 中评论 `@code-review-bot review` 重新审核 |
 
-### 审核报告示例
+## 💬 指令系统
 
-```markdown
-## 🔍 代码审核报告
+### 普通用户指令
 
-**审核时间**: 2026-05-01 18:30:00
-**代码来源**: 代码块 #1 (python)
-**代码评分**: **78/100** 🟡 良好
+| 指令 | 说明 |
+|------|------|
+| `@code-review-bot review` | 重新触发自动审核 |
+| `@code-review-bot human` | 请求管理员人工审核 |
 
-### 📊 审核总览
+### 管理员指令
 
-| 检查项 | 结果 |
-|--------|------|
-| 🔴 严重问题 | 0 |
-| 🟠 高危问题 | 1 |
-| 🟡 中危问题 | 2 |
-| 🟢 低危问题 | 1 |
-| 🔑 敏感信息 | 0 |
-| 🔒 安全扫描 (Bandit) | 1 |
-| 📋 代码风格 (Ruff) | 3 |
-| 🐛 Bug (Pylint) | 0 |
-| 📏 代码行数 | 128 |
-| 🔄 圈复杂度 | 8 |
-| 💬 注释比例 | 12% |
+| 指令 | 说明 |
+|------|------|
+| `@code-review-bot approve` | 标记审核通过，自动回复并打 `approved` 标签 |
+| `@code-review-bot reject [原因]` | 标记审核不通过，自动回复原因并打 `rejected` 标签 |
 
-<details><summary><b>⚠️ 恶意代码检测（点击展开详情）</b></summary>
+### 人工审核流程
 
-#### 🟠 命令注入: subprocess shell=True
-- **严重等级**: HIGH
-- **出现次数**: 1 次
-- **行号**: 18
-- **修复建议**: 将 shell=True 改为 shell=False，避免 shell 注入
-
-</details>
-
-<details><summary><b>📝 评分扣分明细（点击展开）</b></summary>
-
-| 扣分项 | 分值 |
-|--------|------|
-| 命令注入: subprocess shell=True | -15 |
-| Bandit: 使用可能被滥用的函数 | -5 |
-| Ruff: 3 个问题 | -0.6 |
-| 圈复杂度过高 (8) | 0 |
-
-| **最终得分** | **78/100** |
-
-</details>
-
-### 📝 审核结论
-
-⚠️ **审核通过（有警告）** — 代码评分 **78/100**，建议修复后合并。
-共发现 3 个高危/中危问题。
-
----
-*此报告由 Code Review Bot v2.0 自动生成 | 审核标准参考 OWASP Top 10 + PEP 8*
 ```
+用户提交代码 → 自动审核 → 评论审核报告
+                        ↓
+            用户评论 @code-review-bot human → 邮件通知管理员
+                        ↓
+            管理员在 Issue 查看代码和报告
+                        ↓
+            管理员评论 @code-review-bot approve → ✅ 审核通过
+            或
+            管理员评论 @code-review-bot reject 代码有XX问题 → ❌ 审核不通过
+```
+
+## 📧 管理员邮件通知
+
+管理员邮箱：**3815099625@qq.com**
+
+邮件通知场景：
+1. **新代码提交** — 用户创建代码审核 Issue 时，立即通知管理员
+2. **审核报告** — 自动审核完成后，发送完整审核报告（附件 md + 邮件摘要）
+3. **人工审核请求** — 用户请求人工审核时，邮件通知管理员前往处理
+
+邮件标题统一以 `[Admin管理员]` 开头，方便识别。
+
+## 🏷 自动标签
+
+| 标签 | 触发条件 |
+|------|----------|
+| `review` | 提交代码 Issue |
+| `bug` / `triage` | Bug 反馈 Issue |
+| `enhancement` | 功能建议 Issue |
+| `review-passed` | 自动审核通过 |
+| `review-warning` | 自动审核通过但有警告 |
+| `review-failed` | 自动审核未通过 |
+| `human-review` | 用户请求人工审核 |
+| `approved` | 管理员审核通过 |
+| `rejected` | 管理员审核不通过 |
+| `score-excellent` | 评分 ≥ 90 |
+| `score-good` | 评分 ≥ 70 |
+| `score-needs-work` | 评分 ≥ 50 |
+| `score-poor` | 评分 < 50 |
 
 ## ⚙️ 配置
 
@@ -128,7 +139,7 @@ your-repo/
 编辑 `scripts/code_review.py` 中的常量：
 
 ```python
-CORE_PASS = 70   # 通过分数阈值（默认 70）
+SCORE_PASS = 70   # 通过分数阈值（默认 70）
 SCORE_WARN = 50   # 警告分数阈值（默认 50）
 ```
 
@@ -146,6 +157,15 @@ SCORE_WARN = 50   # 警告分数阈值（默认 50）
 
 ```python
 (r"你的正则模式", "描述"),
+```
+
+### 自定义管理员邮箱
+
+编辑 `.github/workflows/code-review.yml` 中的 `env`：
+
+```yaml
+env:
+  ADMIN_EMAIL: "your-admin@qq.com"
 ```
 
 ## 🛠 支持的编程语言

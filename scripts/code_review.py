@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-代码审核机器人 - 主入口 v2.0
+代码审核机器人 - 主入口 v2.1
 对提交的代码进行安全、合规、Bug 检测，生成带评分的审核报告
 
 支持：
@@ -10,6 +10,7 @@
 - 恶意代码检测（含严重等级）
 - 敏感信息泄露检测
 - 代码复杂度分析
+- 纯文本摘要报告（用于管理员邮件通知）
 """
 
 import os
@@ -487,6 +488,71 @@ def score_badge(score):
         return "🔴 不合格"
 
 
+def generate_summary(
+    username,
+    code_name,
+    code_content,
+    malicious,
+    secrets,
+    bandit,
+    ruff,
+    pylint,
+    complexity,
+):
+    """生成纯文本摘要版报告（用于邮件通知）"""
+    score, _ = calculate_score(malicious, secrets, bandit, ruff, pylint, complexity)
+    summary = []
+    summary.append(f"提交用户: {username}")
+    summary.append(f"代码来源: {code_name}")
+    summary.append(f"审核评分: {score}/100 {score_badge(score)}")
+    summary.append("")
+
+    total_critical = sum(1 for item in malicious if item["severity"] == "CRITICAL")
+    total_high = sum(1 for item in malicious if item["severity"] == "HIGH")
+    total_medium = sum(1 for item in malicious if item["severity"] == "MEDIUM")
+    total_low = sum(1 for item in malicious if item["severity"] == "LOW")
+    total_secrets = len(secrets)
+    total_bugs = sum(1 for b in pylint if b.get("type") == "error")
+
+    summary.append("审核总览:")
+    summary.append(f"  严重问题 (CRITICAL): {total_critical}")
+    summary.append(f"  高危问题 (HIGH): {total_high}")
+    summary.append(f"  中危问题 (MEDIUM): {total_medium}")
+    summary.append(f"  低危问题 (LOW): {total_low}")
+    summary.append(f"  敏感信息泄露: {total_secrets}")
+    summary.append(f"  Bandit 安全扫描: {len(bandit)}")
+    summary.append(f"  Ruff 代码风格: {len(ruff)}")
+    summary.append(f"  Pylint Bug: {total_bugs}")
+    summary.append(f"  代码行数: {complexity['code_lines']}")
+    summary.append(f"  圈复杂度: {complexity['cyclomatic']}")
+    summary.append(f"  注释比例: {complexity['comment_ratio']}%")
+    summary.append("")
+
+    if malicious:
+        summary.append("恶意代码检测:")
+        for finding in malicious:
+            icon = severity_icon(finding["severity"])
+            summary.append(f"  {icon} {finding['desc']} (行 {', '.join(str(ln) for ln in finding['lines'])})")
+        summary.append("")
+
+    if secrets:
+        summary.append("敏感信息检测:")
+        for finding in secrets:
+            summary.append(f"  - {finding['desc']} (行 {', '.join(str(ln) for ln in finding['lines'])})")
+        summary.append("")
+
+    # 审核结论
+    if score >= SCORE_PASS and total_critical == 0 and total_secrets == 0:
+        result = f"审核通过 - 评分 {score}/100，质量良好。"
+    elif score >= SCORE_WARN and total_critical == 0:
+        result = f"审核通过(有警告) - 评分 {score}/100，建议修复后合并。"
+    else:
+        result = f"审核未通过 - 评分 {score}/100，存在严重问题。"
+    summary.append(f"审核结论: {result}")
+
+    return "\n".join(summary), score
+
+
 def generate_report(
     username,
     code_name,
@@ -681,6 +747,7 @@ def main():
         _, _, username = get_issue_content()
 
     all_reports = []
+    all_summaries = []
     total_score = 0
     code_count = 0
 
@@ -717,7 +784,19 @@ def main():
                     pylint,
                     complexity,
                 )
+                summary_text, _ = generate_summary(
+                    username,
+                    filename,
+                    content,
+                    malicious,
+                    secrets,
+                    bandit,
+                    ruff,
+                    pylint,
+                    complexity,
+                )
                 all_reports.append(report_text)
+                all_summaries.append(summary_text)
                 total_score += score
                 code_count += 1
             finally:
@@ -770,11 +849,30 @@ def main():
                     pylint_results,
                     complexity,
                 )
+                summary_text, _ = generate_summary(
+                    username,
+                    code_name,
+                    code,
+                    malicious,
+                    secrets,
+                    bandit_results,
+                    ruff_results,
+                    pylint_results,
+                    complexity,
+                )
                 all_reports.append(report_text)
+                all_summaries.append(summary_text)
                 total_score += score
                 code_count += 1
             finally:
                 os.unlink(tmp_path)
+
+    # 合并所有摘要（纯文本，用于邮件）
+    if code_count > 1:
+        avg_score = round(total_score / code_count)
+        all_summaries_text = f"综合评分: {avg_score}/100 {score_badge(avg_score)} (共审核 {code_count} 段代码)\n\n" + "\n---\n".join(all_summaries)
+    else:
+        all_summaries_text = "\n---\n".join(all_summaries)
 
     # 合并所有报告
     if not all_reports:
@@ -793,6 +891,11 @@ def main():
     report_file = Path("review_report.md")
     report_file.write_text(final_report, encoding="utf-8")
     print(f"审核报告已生成: {report_file}")
+
+    # 保存纯文本摘要（供 GitHub Actions 读取后发送邮件）
+    summary_file = Path("review_summary.txt")
+    summary_file.write_text(all_summaries_text, encoding="utf-8")
+    print(f"审核摘要已生成: {summary_file}")
 
 
 if __name__ == "__main__":

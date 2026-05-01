@@ -1,4 +1,4 @@
-name: Code Review Bot
+name: Code Review Bot v2.1
 
 on:
   issues:
@@ -14,6 +14,9 @@ permissions:
   pull-requests: write
   contents: read
 
+env:
+  ADMIN_EMAIL: "3815099625@qq.com"
+
 jobs:
   # ── 自动分类：根据 Issue 模板自动打标签 + 智能回复 ──
   classify:
@@ -26,58 +29,66 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const title = context.payload.issue.title;
-            const body = context.payload.issue.body || '';
             const issueNumber = context.payload.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            const userLogin = context.payload.issue.user.login;
 
             const labels = [];
             let replyMessage = '';
 
             if (title.includes('[提交代码]') || title.includes('[代码审核]') || title.includes('[Code Review]')) {
               labels.push('review');
-              replyMessage = `## 🤖 代码审核已提交
-
-              感谢 ${context.payload.issue.user.login} 提交代码！审核机器人正在分析你的代码，请稍候几分钟...
-
-              **审核内容包括：**
-              - 🔒 安全漏洞检测
-              - 📋 代码规范检查
-              - 🐛 潜在 Bug 分析
-              - 🔑 敏感信息扫描
-
-              审核结果将自动评论在下方。
-
-              ---
-              💡 **指令提示：**
-              - 评论 \`@code-review-bot review\` 可重新触发审核
-              - 评论 \`@code-review-bot human\` 可请求人工审核
-              `;
+              const lines = [
+                '## 🤖 代码审核已提交',
+                '',
+                `感谢 **${userLogin}** 提交代码！审核机器人正在分析你的代码，请稍候几分钟...`,
+                '',
+                '**审核内容包括：**',
+                '- 🔒 安全漏洞检测',
+                '- 📋 代码规范检查',
+                '- 🐛 潜在 Bug 分析',
+                '- 🔑 敏感信息扫描',
+                '',
+                '审核结果将自动评论在下方。',
+                '',
+                '---',
+                '💡 **指令提示：**',
+                '- 评论 `@code-review-bot review` 可重新触发审核',
+                '- 评论 `@code-review-bot human` 可请求人工审核',
+                '- 管理员 `@code-review-bot approve` 标记审核通过',
+                '- 管理员 `@code-review-bot reject [原因]` 标记审核不通过',
+              ];
+              replyMessage = lines.join('\n');
             } else if (title.includes('[Bug]') || title.includes('[bug]')) {
               labels.push('bug');
               labels.push('triage');
-              replyMessage = `## 🐛 Bug 反馈已收到
-
-              感谢 ${context.payload.issue.user.login} 的反馈！我们已将此 Issue 标记为待处理。
-
-              维护者会尽快查看并回复，请耐心等待。
-
-              ---
-              💡 **指令提示：**
-              - 评论 \`@code-review-bot human\` 可请求人工审核
-              `;
+              const lines = [
+                '## 🐛 Bug 反馈已收到',
+                '',
+                `感谢 **${userLogin}** 的反馈！我们已将此 Issue 标记为待处理。`,
+                '',
+                '维护者会尽快查看并回复，请耐心等待。',
+                '',
+                '---',
+                '💡 **指令提示：**',
+                '- 评论 `@code-review-bot human` 可请求人工审核',
+              ];
+              replyMessage = lines.join('\n');
             } else if (title.includes('[建议]') || title.includes('[Suggestion]') || title.includes('[功能建议]')) {
               labels.push('enhancement');
-              replyMessage = `## 💡 功能建议已收到
-
-              感谢 ${context.payload.issue.user.login} 的建议！我们已记录此功能请求。
-
-              社区成员和 Maintainer 会参与讨论，欢迎补充更多细节。
-
-              ---
-              💡 **指令提示：**
-              - 评论 \`@code-review-bot human\` 可请求人工审核
-              `;
+              const lines = [
+                '## 💡 功能建议已收到',
+                '',
+                `感谢 **${userLogin}** 的建议！我们已记录此功能请求。`,
+                '',
+                '社区成员和 Maintainer 会参与讨论，欢迎补充更多细节。',
+                '',
+                '---',
+                '💡 **指令提示：**',
+                '- 评论 `@code-review-bot human` 可请求人工审核',
+              ];
+              replyMessage = lines.join('\n');
             }
 
             if (labels.length > 0) {
@@ -95,6 +106,33 @@ jobs:
                 body: replyMessage
               });
             }
+
+      # ── 新建 Issue 时通知管理员 ──
+      - name: Notify admin (new issue)
+        if: contains(github.event.issue.title, '[提交代码]') || contains(github.event.issue.title, '[代码审核]') || contains(github.event.issue.title, '[Code Review]')
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 465
+          username: ${{ env.ADMIN_EMAIL }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[Admin管理员] 新代码提交 - Issue #${{ github.event.issue.number }} by ${{ github.actor }}"
+          to: ${{ env.ADMIN_EMAIL }}
+          from: "Code Review Bot <${{ env.ADMIN_EMAIL }}>"
+          body: |
+            [Admin管理员] 新代码提交通知
+            ====================================
+
+            提交用户: ${{ github.actor }}
+            Issue 编号: #${{ github.event.issue.number }}
+            Issue 标题: ${{ github.event.issue.title }}
+            Issue 链接: ${{ github.event.issue.html_url }}
+            提交时间: ${{ github.event.issue.created_at }}
+
+            代码审核机器人正在自动分析中，审核完成后将发送完整报告。
+
+            --
+            Code Review Bot v2.1 | NekoAiDev
 
   # ── 代码审核 ──
   review:
@@ -128,31 +166,87 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const commentBody = context.payload.comment?.body || '';
-            const isReview = commentBody.includes('@code-review-bot review') || commentBody.includes('@code-review-bot') && !commentBody.includes('human');
+            const isReview = commentBody.includes('@code-review-bot review');
             const isHuman = commentBody.includes('@code-review-bot human');
-            
-            if (isHuman) {
-              // 请求人工审核
-              const issueNumber = context.issue.number || context.payload.issue.number;
-              const owner = context.repo.owner;
-              const repo = context.repo.repo;
-              
+            const isApprove = commentBody.includes('@code-review-bot approve');
+            const isReject = commentBody.includes('@code-review-bot reject');
+            const issueNumber = context.issue.number || context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            if (isApprove) {
+              const approveMsg = [
+                '## ✅ 人工审核通过',
+                '',
+                '本 Issue 已由管理员审核通过，代码质量确认合格。',
+                '',
+                '感谢提交！🎉',
+                '',
+                '---',
+                '此消息由 Code Review Bot 🤖 自动发送',
+              ].join('\n');
+              await github.rest.issues.createComment({
+                owner, repo,
+                issue_number: issueNumber,
+                body: approveMsg
+              });
+              await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['approved'] });
+              core.setOutput('command', 'approve');
+              core.setOutput('skip', 'true');
+
+            } else if (isReject) {
+              const rejectReason = commentBody.replace(/.*@code-review-bot reject\s*/i, '').trim() || '代码未达到审核标准';
+              const rejectMsg = [
+                '## ❌ 人工审核未通过',
+                '',
+                '本 Issue 已由管理员审核，未通过。',
+                '',
+                `**不通过原因：** ${rejectReason}`,
+                '',
+                '请根据反馈修改代码后重新提交，或在评论中使用 `@code-review-bot review` 重新触发自动审核。',
+                '',
+                '---',
+                '此消息由 Code Review Bot 🤖 自动发送',
+              ].join('\n');
+              await github.rest.issues.createComment({
+                owner, repo,
+                issue_number: issueNumber,
+                body: rejectMsg
+              });
+              await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['rejected'] });
+              core.setOutput('command', 'reject');
+              core.setOutput('skip', 'true');
+
+            } else if (isHuman) {
               await github.rest.issues.addLabels({
                 owner, repo,
                 issue_number: issueNumber,
                 labels: ['human-review']
               });
-              
+              const humanMsg = [
+                '## 👨‍💻 人工审核请求已提交',
+                '',
+                '已标记为 `human-review`，管理员会尽快进行人工审核。',
+                '',
+                '审核结果将通过邮件和评论通知。',
+                '',
+                '---',
+                '💡 **管理员操作指令：**',
+                '- `@code-review-bot approve` — 审核通过',
+                '- `@code-review-bot reject [原因]` — 审核不通过（可选填原因）',
+                '',
+                '---',
+                '此消息由 Code Review Bot 🤖 自动发送',
+              ].join('\n');
               await github.rest.issues.createComment({
                 owner, repo,
                 issue_number: issueNumber,
-                body: `## 👨‍💻 人工审核请求已提交\n\n已标记为 \`human-review\`，维护者会尽快进行人工审核。\n\n---\n此消息由 Code Review Bot 🤖 自动发送`
+                body: humanMsg
               });
-              
               core.setOutput('command', 'human');
               core.setOutput('skip', 'true');
-            } else if (isReview && !commentBody.includes('@code-review-bot review')) {
-              // 只是 @code-review-bot 但没有 review/human 指令
+
+            } else if (commentBody.includes('@code-review-bot') && !isReview) {
               core.setOutput('command', 'unknown');
               core.setOutput('skip', 'false');
             } else {
@@ -176,11 +270,23 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const issueNumber = context.issue.number || context.payload.issue.number;
+            const unknownMsg = [
+              '## ❓ 未知指令',
+              '',
+              '可用指令：',
+              '- `@code-review-bot review` — 重新触发代码审核',
+              '- `@code-review-bot human` — 请求人工审核',
+              '- `@code-review-bot approve` — 审核通过（管理员）',
+              '- `@code-review-bot reject [原因]` — 审核不通过（管理员）',
+              '',
+              '---',
+              '此消息由 Code Review Bot 🤖 自动发送',
+            ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
-              body: `## ❓ 未知指令\n\n可用指令：\n- \`@code-review-bot review\` — 重新触发代码审核\n- \`@code-review-bot human\` — 请求人工审核\n\n---\n此消息由 Code Review Bot 🤖 自动发送`
+              body: unknownMsg
             });
 
       - name: Comment review report
@@ -212,8 +318,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // 移除旧的评分标签
-            const oldLabels = ['review-passed', 'review-failed', 'review-warning', 'score-excellent', 'score-good', 'score-needs-work', 'score-poor', 'human-review'];
+            const oldLabels = ['review-passed', 'review-failed', 'review-warning', 'score-excellent', 'score-good', 'score-needs-work', 'score-poor', 'human-review', 'approved', 'rejected'];
             try {
               const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
               for (const label of oldLabels) {
@@ -223,7 +328,6 @@ jobs:
               }
             } catch (e) {}
 
-            // 添加新标签
             if (report.includes('审核未通过')) {
               await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['review-failed'] });
             } else if (report.includes('有警告')) {
@@ -232,7 +336,6 @@ jobs:
               await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['review-passed'] });
             }
 
-            // 评分标签
             const scoreMatch = report.match(/(\d+)\/100/);
             if (scoreMatch) {
               const score = parseInt(scoreMatch[1]);
@@ -246,3 +349,81 @@ jobs:
                 await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['score-poor'] });
               }
             }
+
+      # ── 审核完成后发送完整报告邮件给管理员 ──
+      - name: Read summary for email
+        if: steps.cmd.outputs.skip != 'true' && steps.review.outcome == 'success'
+        id: summary
+        run: |
+          if [ -f review_summary.txt ]; then
+            {
+              echo "content<<EMAIL_EOF"
+              cat review_summary.txt
+              echo "EMAIL_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "content=请查看 GitHub Issue 获取完整报告" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send review report to admin
+        if: steps.cmd.outputs.skip != 'true' && steps.review.outcome == 'success'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 465
+          username: ${{ env.ADMIN_EMAIL }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[Admin管理员] 审核报告 - Issue #${{ github.event.issue.number }} by ${{ github.actor }}"
+          to: ${{ env.ADMIN_EMAIL }}
+          from: "Code Review Bot <${{ env.ADMIN_EMAIL }}>"
+          body: |
+            [Admin管理员] AI代码审核报告
+            ====================================
+
+            ${{ steps.summary.outputs.content }}
+
+            ====================================
+            详细报告（含折叠详情）请查看附件 review_report.md 或点击 Issue 链接：
+            ${{ github.event.issue.html_url }}
+
+            管理员操作指令：
+            - 在 Issue 中评论 @code-review-bot approve 通过审核
+            - 在 Issue 中评论 @code-review-bot reject [原因] 拒绝审核
+            - 在 Issue 中评论 @code-review-bot human 标记人工审核
+
+            --
+            Code Review Bot v2.1 | NekoAiDev
+        attachments: review_report.md
+
+  # ── 人工审核请求时发送邮件通知管理员 ──
+  notify-human-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, '@code-review-bot human')
+    steps:
+      - name: Notify admin for human review
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 465
+          username: ${{ env.ADMIN_EMAIL }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[Admin管理员] 人工审核请求 - Issue #${{ github.event.issue.number }}"
+          to: ${{ env.ADMIN_EMAIL }}
+          from: "Code Review Bot <${{ env.ADMIN_EMAIL }}>"
+          body: |
+            [Admin管理员] 人工审核请求
+            ====================================
+
+            请求用户: ${{ github.actor }}
+            Issue 编号: #${{ github.event.issue.number }}
+            Issue 链接: ${{ github.event.issue.html_url }}
+            请求时间: ${{ github.event.comment.created_at }}
+
+            用户请求了人工审核，请前往 GitHub Issue 进行审核。
+
+            管理员操作：
+            - 评论 @code-review-bot approve 通过审核
+            - 评论 @code-review-bot reject [原因] 拒绝审核
+
+            --
+            Code Review Bot v2.1 | NekoAiDev
