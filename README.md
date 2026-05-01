@@ -206,4 +206,4 @@ MIT License
 
 ---
 
-**Made with ❤️ by Neko Ai Dev**
+**Made with ❤️ by Neko Ai**

@@ -132,7 +132,7 @@ jobs:
             代码审核机器人正在自动分析中，审核完成后将发送完整报告。
 
             --
-            Code Review Bot v2.2 | NekoAiDev
+            Code Review Bot v2.2 | NekoDev
 
   # ── 代码审核 ──
   review:
@@ -429,7 +429,7 @@ jobs:
             - 在 Issue 中评论 @code-review-bot reject [原因] 拒绝审核
 
             --
-            Code Review Bot v2.2 | NekoAiDev
+            Code Review Bot v2.2 | NekoDev
         attachments: review_report.md
 
   # ── 人工审核请求时邮件通知管理员 ──
@@ -463,4 +463,4 @@ jobs:
             - 评论 @code-review-bot reject [原因] 拒绝审核
 
             --
-            Code Review Bot v2.2 | NekoAiDev
+            Code Review Bot v2.2 | NekoDev
