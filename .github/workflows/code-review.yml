@@ -1,4 +1,4 @@
-name: Code Review Bot v2.1
+name: Code Review Bot v2.2
 
 on:
   issues:
@@ -18,12 +18,13 @@ env:
   ADMIN_EMAIL: "3815099625@qq.com"
 
 jobs:
-  # ── 自动分类：根据 Issue 模板自动打标签 + 智能回复 ──
+  # ── 自动分类：打标签 + 发"审核中"占位评论 + 邮件通知管理员 ──
   classify:
     runs-on: ubuntu-latest
     if: github.event_name == 'issues' && github.event.action == 'opened'
     steps:
-      - name: Auto label & reply
+      - name: Auto label, reply & notify
+        id: classify
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -33,31 +34,21 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const userLogin = context.payload.issue.user.login;
+            const issueUrl = context.payload.issue.html_url;
 
             const labels = [];
             let replyMessage = '';
+            let isCodeReview = false;
 
             if (title.includes('[提交代码]') || title.includes('[代码审核]') || title.includes('[Code Review]')) {
               labels.push('review');
+              isCodeReview = true;
               const lines = [
                 '## 🤖 代码审核已提交',
                 '',
                 `感谢 **${userLogin}** 提交代码！审核机器人正在分析你的代码，请稍候几分钟...`,
                 '',
-                '**审核内容包括：**',
-                '- 🔒 安全漏洞检测',
-                '- 📋 代码规范检查',
-                '- 🐛 潜在 Bug 分析',
-                '- 🔑 敏感信息扫描',
-                '',
-                '审核结果将自动评论在下方。',
-                '',
-                '---',
-                '💡 **指令提示：**',
-                '- 评论 `@code-review-bot review` 可重新触发审核',
-                '- 评论 `@code-review-bot human` 可请求人工审核',
-                '- 管理员 `@code-review-bot approve` 标记审核通过',
-                '- 管理员 `@code-review-bot reject [原因]` 标记审核不通过',
+                '<!-- __BOT_PLACEHOLDER__ -->',
               ];
               replyMessage = lines.join('\n');
             } else if (title.includes('[Bug]') || title.includes('[bug]')) {
@@ -69,10 +60,6 @@ jobs:
                 `感谢 **${userLogin}** 的反馈！我们已将此 Issue 标记为待处理。`,
                 '',
                 '维护者会尽快查看并回复，请耐心等待。',
-                '',
-                '---',
-                '💡 **指令提示：**',
-                '- 评论 `@code-review-bot human` 可请求人工审核',
               ];
               replyMessage = lines.join('\n');
             } else if (title.includes('[建议]') || title.includes('[Suggestion]') || title.includes('[功能建议]')) {
@@ -83,10 +70,6 @@ jobs:
                 `感谢 **${userLogin}** 的建议！我们已记录此功能请求。`,
                 '',
                 '社区成员和 Maintainer 会参与讨论，欢迎补充更多细节。',
-                '',
-                '---',
-                '💡 **指令提示：**',
-                '- 评论 `@code-review-bot human` 可请求人工审核',
               ];
               replyMessage = lines.join('\n');
             }
@@ -99,17 +82,34 @@ jobs:
               });
             }
 
+            let commentId = '';
             if (replyMessage) {
-              await github.rest.issues.createComment({
+              const { data: comment } = await github.rest.issues.createComment({
                 owner, repo,
                 issue_number: issueNumber,
                 body: replyMessage
               });
+              commentId = String(comment.id);
             }
 
-      # ── 新建 Issue 时通知管理员 ──
-      - name: Notify admin (new issue)
-        if: contains(github.event.issue.title, '[提交代码]') || contains(github.event.issue.title, '[代码审核]') || contains(github.event.issue.title, '[Code Review]')
+            core.setOutput('comment_id', commentId);
+            core.setOutput('is_code_review', String(isCodeReview));
+
+      - name: Save comment ID as artifact
+        if: steps.classify.outputs.is_code_review == 'true'
+        run: |
+          echo "${{ steps.classify.outputs.comment_id }}" > comment_id.txt
+
+      - name: Upload comment ID artifact
+        if: steps.classify.outputs.is_code_review == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: classify-comment-id
+          path: comment_id.txt
+          retention-days: 1
+
+      - name: Notify admin (new code submission)
+        if: steps.classify.outputs.is_code_review == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.qq.com
@@ -132,7 +132,7 @@ jobs:
             代码审核机器人正在自动分析中，审核完成后将发送完整报告。
 
             --
-            Code Review Bot v2.1 | NekoAiDev
+            Code Review Bot v2.2 | NekoAiDev
 
   # ── 代码审核 ──
   review:
@@ -158,6 +158,24 @@ jobs:
       - name: Install dependencies
         run: |
           pip install ruff pylint bandit
+
+      - name: Download classify comment ID
+        if: github.event_name == 'issues'
+        uses: actions/download-artifact@v4
+        with:
+          name: classify-comment-id
+          path: .
+        continue-on-error: true
+
+      - name: Read comment ID
+        if: github.event_name == 'issues'
+        id: prev_comment
+        run: |
+          if [ -f comment_id.txt ]; then
+            echo "id=$(cat comment_id.txt)" >> "$GITHUB_OUTPUT"
+          else
+            echo "id=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Check command type
         id: cmd
@@ -289,8 +307,28 @@ jobs:
               body: unknownMsg
             });
 
-      - name: Comment review report
-        if: steps.cmd.outputs.skip != 'true' && steps.review.outcome == 'success'
+      # ── 编辑占位评论为完整报告（不发新评论） ──
+      - name: Update placeholder comment with report
+        if: steps.cmd.outputs.skip != 'true' && steps.review.outcome == 'success' && steps.prev_comment.outputs.id != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('review_report.md', 'utf8');
+            const issueNumber = context.issue.number || context.payload.number;
+            const commentId = '${{ steps.prev_comment.outputs.id }}';
+
+            // 编辑之前的"审核中"占位评论，替换为完整报告
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: parseInt(commentId),
+              body: report
+            });
+
+      - name: Post report as new comment (fallback)
+        if: steps.cmd.outputs.skip != 'true' && steps.review.outcome == 'success' && steps.prev_comment.outputs.id == ''
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -350,7 +388,7 @@ jobs:
               }
             }
 
-      # ── 审核完成后发送完整报告邮件给管理员 ──
+      # ── 审核完成后发送邮件给管理员 ──
       - name: Read summary for email
         if: steps.cmd.outputs.skip != 'true' && steps.review.outcome == 'success'
         id: summary
@@ -389,13 +427,12 @@ jobs:
             管理员操作指令：
             - 在 Issue 中评论 @code-review-bot approve 通过审核
             - 在 Issue 中评论 @code-review-bot reject [原因] 拒绝审核
-            - 在 Issue 中评论 @code-review-bot human 标记人工审核
 
             --
-            Code Review Bot v2.1 | NekoAiDev
+            Code Review Bot v2.2 | NekoAiDev
         attachments: review_report.md
 
-  # ── 人工审核请求时发送邮件通知管理员 ──
+  # ── 人工审核请求时邮件通知管理员 ──
   notify-human-review:
     runs-on: ubuntu-latest
     if: github.event_name == 'issue_comment' && contains(github.event.comment.body, '@code-review-bot human')
@@ -426,4 +463,4 @@ jobs:
             - 评论 @code-review-bot reject [原因] 拒绝审核
 
             --
-            Code Review Bot v2.1 | NekoAiDev
+            Code Review Bot v2.2 | NekoAiDev
