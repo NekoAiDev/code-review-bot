@@ -134,13 +134,16 @@ def get_event_payload():
 
 
 def get_issue_content():
-    """获取 Issue 中的内容"""
+    """获取 Issue 中的内容，返回 (title, body, username)"""
     payload = get_event_payload()
     if not payload or "issue" not in payload:
-        return None, None
+        return None, None, None
     title = payload["issue"].get("title", "")
     body = payload["issue"].get("body", "")
-    return title, body
+    # 获取提交用户名
+    user = payload["issue"].get("user", {})
+    username = user.get("login", "未知用户")
+    return title, body, username
 
 
 def get_pr_changed_files():
@@ -398,13 +401,15 @@ def score_badge(score):
         return "🔴 不合格"
 
 
-def generate_report(code_name, code_content, malicious, secrets, bandit, ruff, pylint, complexity):
+def generate_report(username, code_name, code_content, malicious, secrets, bandit, ruff, pylint, complexity):
     """生成单个代码块的审核报告"""
     score, deductions = calculate_score(malicious, secrets, bandit, ruff, pylint, complexity)
     report = []
 
-    # 标题
-    report.append("## 🔍 代码审核报告")
+    # 标题 - 新格式
+    report.append(f"## 🤖 AI代码审核报告 for {username}")
+    report.append("")
+    report.append("您好！我已经对你提交的插件代码进行了初步自动化审核，作为初步参考:")
     report.append("")
     report.append(f"**审核时间**: {datetime.now(CST).strftime('%Y-%m-%d %H:%M:%S')}")
     report.append(f"**代码来源**: {code_name}")
@@ -556,6 +561,13 @@ def main():
     payload = get_event_payload()
     event_name = os.environ.get("EVENT_NAME", "unknown")
 
+    # 获取用户名
+    username = "未知用户"
+    if event_name == "pull_request":
+        username = get_pr_username()
+    else:
+        _, _, username = get_issue_content()
+
     all_reports = []
     total_score = 0
     code_count = 0
@@ -580,7 +592,7 @@ def main():
                 pylint = run_pylint(tmp_path)
                 complexity = analyze_complexity(content)
 
-                report_text, score = generate_report(filename, content, malicious, secrets, bandit, ruff, pylint, complexity)
+                report_text, score = generate_report(username, filename, content, malicious, secrets, bandit, ruff, pylint, complexity)
                 all_reports.append(report_text)
                 total_score += score
                 code_count += 1
@@ -589,7 +601,7 @@ def main():
 
     else:
         # Issue 模式：审核代码块
-        title, body = get_issue_content()
+        title, body, username = get_issue_content()
         if not body:
             print("未找到代码内容")
             sys.exit(1)
@@ -621,7 +633,7 @@ def main():
 
                 complexity = analyze_complexity(code)
 
-                report_text, score = generate_report(code_name, code, malicious, secrets, bandit_results, ruff_results, pylint_results, complexity)
+                report_text, score = generate_report(username, code_name, code, malicious, secrets, bandit_results, ruff_results, pylint_results, complexity)
                 all_reports.append(report_text)
                 total_score += score
                 code_count += 1
