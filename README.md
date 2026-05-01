@@ -1,153 +1,174 @@
-# Code Review Bot
+# Code Review Bot v2.0
 
-一个基于 GitHub Actions 的自动化代码审核机器人，能够检测代码中的安全问题、合规问题和潜在 Bug。
+一个基于 GitHub Actions 的自动化代码审核机器人，能够检测安全问题、合规问题、敏感信息泄露和潜在 Bug，并给出 0-100 分的综合评分。
 
 ## ✨ 功能特性
 
-- **📝 Issue 模板** — 用户创建 Issue 时自动弹出选项引导（提交代码审核 / Bug 反馈 / 功能建议）
-- **🔒 安全检测** — 使用 Bandit 扫描 Python 代码中的安全漏洞
-- **📋 合规检查** — 使用 Ruff 检查代码风格和规范性
-- **🐛 Bug 检测** — 使用 Pylint 检测潜在 Bug 和逻辑错误
-- **⚠️ 恶意代码识别** — 自动识别危险函数调用（eval、exec、os.system 等）
-- **🏷 自动标签** — 根据模板类型自动打标签（review / bug / enhancement）
-- **📊 审核结果标签** — 审核通过自动打 `review-passed`，未通过打 `review-failed`
-- **📝 自动报告** — 自动生成审核报告并评论到 Issue/PR
+| 功能 | 说明 |
+|------|------|
+| 🔍 多源审核 | 支持 Issue 代码块 + PR diff 变更文件 |
+| 🔒 恶意代码检测 | 检测命令注入、代码执行、反序列化、路径遍历等，含 CRITICAL/HIGH/MEDIUM/LOW 严重等级 |
+| 🔑 敏感信息检测 | 检测硬编码密码、API Key、GitHub Token、AWS Key、私钥等 |
+| 🔒 Bandit 安全扫描 | 专业 Python 安全漏洞扫描 |
+| 📋 Ruff 代码风格 | PEP 8 合规性检查 |
+| 🐛 Pylint Bug 检测 | 潜在 Bug 和逻辑错误检测 |
+| 📊 代码复杂度分析 | 圈复杂度、代码行数、注释比例 |
+| 📝 0-100 评分系统 | 自动评分 + 等级徽章（优秀/良好/需改进/不合格）|
+| 🏷 自动标签 | 根据评分自动打标签（score-excellent/good/needs-work/poor）|
+| 📂 可折叠报告 | 详细问题可折叠，报告清晰易读 |
+| 💬 评论触发 | 在 Issue 中 @code-review-bot 触发重新审核 |
+
+## 📊 评分标准
+
+| 分数 | 等级 | 徽章 | 说明 |
+|------|------|------|------|
+| 90-100 | 优秀 | 🟢 | 代码质量优秀，几乎无问题 |
+| 70-89 | 良好 | 🟡 | 代码质量良好，少量警告 |
+| 50-69 | 需改进 | 🟠 | 存在中高危问题，建议修复后合并 |
+| 0-49 | 不合格 | 🔴 | 存在严重问题，必须修复 |
+
+**扣分规则：**
+- CRITICAL 问题：-25 分/个
+- HIGH 问题：-15 分/个
+- MEDIUM 问题：-8 分/个
+- LOW 问题：-3 分/个
+- 敏感信息泄露：-15 分/个
+- Bandit 问题：-3~-15 分/个（按严重等级）
+- Ruff 问题：-0.2 分/个（上限 -10 分）
+- Pylint Error：-3 分/个
+- 圈复杂度 >20：-5 分
+- 代码行数 >500：-3 分
+- 注释比例 <5%：-3 分
 
 ## 🚀 使用方法
 
-### 1. 安装到仓库
+### 安装到仓库
 
-将本项目文件复制到你的仓库中：
+将 `code-review-bot` 的文件复制到你的仓库：
 
 ```
 your-repo/
 ├── .github/
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── code-review.yml       # 代码审核模板
-│   │   ├── bug-report.yml        # Bug 反馈模板
-│   │   ├── feature-request.yml   # 功能建议模板
-│   │   └── config.yml            # 模板配置
 │   └── workflows/
 │       └── code-review.yml       # 审核工作流
 ├── scripts/
-│   └── code_review.py            # 核心审核脚本
-└── requirements.txt              # Python 依赖
+│   └── code_review.py          # 核心审核脚本 v2.0
+└── requirements.txt             # Python 依赖（可省略，workflow 自动安装）
 ```
 
-### 2. 用户使用流程
+### 触发审核
 
-用户点击 **New Issue** 时会看到三个选项：
+| 方式 | 触发条件 |
+|------|----------|
+| Issue 模板 | 选择「代码审核」模板，粘贴代码，提交 |
+| PR 自动 | 创建/更新 Pull Request 自动审核 |
+| 评论触发 | 在 Issue 中评论 `@code-review-bot` 重新审核 |
 
-| 模板 | 用途 | 自动标签 |
-|------|------|----------|
-| 📝 代码审核 | 提交代码进行自动审核 | `review` |
-| 🐛 Bug 反馈 | 报告审核机器人本身的问题 | `bug` |
-| 💡 功能建议 | 为审核机器人提出新功能 | `enhancement` |
-
-用户选择 **📝 代码审核** 后：
-
-1. 填写编程语言
-2. 粘贴代码
-3. 确认不包含敏感信息
-4. 提交 Issue
-5. 审核机器人自动运行，几分钟内评论审核报告
-
-### 3. 查看审核报告
-
-机器人会自动在 Issue/PR 下评论审核报告，包含：
-
-- ✅ 通过项
-- ⚠️ 警告项
-- ❌ 未通过项
-- 📝 修复建议
-
-同时自动添加审核结果标签：
-- `review-passed` — 审核通过
-- `review-failed` — 审核未通过
-
-## 📊 审核报告示例
+### 审核报告示例
 
 ```markdown
 ## 🔍 代码审核报告
 
-**审核时间**: 2026-05-01 18:05:00
-**审核机器人**: Code Review Bot v1.0.0
+**审核时间**: 2026-05-01 18:30:00
+**代码来源**: 代码块 #1 (python)
+**代码评分**: **78/100** 🟡 良好
 
-### 🔒 安全检查
-**⚠️ 发现潜在危险操作:**
-- ❌ 危险函数: os.system
+### 📊 审核总览
 
-**Bandit 安全扫描:**
-- ⚠️ 使用可能被滥用的函数 (行 18)
+| 检查项 | 结果 |
+|--------|------|
+| 🔴 严重问题 | 0 |
+| 🟠 高危问题 | 1 |
+| 🟡 中危问题 | 2 |
+| 🟢 低危问题 | 1 |
+| 🔑 敏感信息 | 0 |
+| 🔒 安全扫描 (Bandit) | 1 |
+| 📋 代码风格 (Ruff) | 3 |
+| 🐛 Bug (Pylint) | 0 |
+| 📏 代码行数 | 128 |
+| 🔄 圈复杂度 | 8 |
+| 💬 注释比例 | 12% |
 
-### 📋 合规检查
-**Ruff 代码风格检查:**
-- ⚠️ 3 个警告
+<details><summary><b>⚠️ 恶意代码检测（点击展开详情）</b></summary>
 
-### 🐛 Bug 检测
-**⚠️ 2 个警告:**
-- 未使用的变量 (行 5)
-- 未处理的异常 (行 42)
+#### 🟠 命令注入: subprocess shell=True
+- **严重等级**: HIGH
+- **出现次数**: 1 次
+- **行号**: 18
+- **修复建议**: 将 shell=True 改为 shell=False，避免 shell 注入
 
-### 📝 审核总结
-⚠️ **审核通过（有警告）** - 发现少量问题，建议修复后合并。
+</details>
+
+<details><summary><b>📝 评分扣分明细（点击展开）</b></summary>
+
+| 扣分项 | 分值 |
+|--------|------|
+| 命令注入: subprocess shell=True | -15 |
+| Bandit: 使用可能被滥用的函数 | -5 |
+| Ruff: 3 个问题 | -0.6 |
+| 圈复杂度过高 (8) | 0 |
+
+| **最终得分** | **78/100** |
+
+</details>
+
+### 📝 审核结论
+
+⚠️ **审核通过（有警告）** — 代码评分 **78/100**，建议修复后合并。
+共发现 3 个高危/中危问题。
 
 ---
-*此报告由 Code Review Bot 自动生成*
+*此报告由 Code Review Bot v2.0 自动生成 | 审核标准参考 OWASP Top 10 + PEP 8*
 ```
 
 ## ⚙️ 配置
 
-### 自定义 Issue 模板
+### 自定义审核阈值
 
-编辑 `.github/ISSUE_TEMPLATE/` 下的模板文件，修改表单字段：
-
-```yaml
-# .github/ISSUE_TEMPLATE/code-review.yml
-- type: dropdown
-  id: language
-  attributes:
-    label: 编程语言
-    options:
-      - Python
-      - JavaScript
-      - TypeScript
-      # 添加更多语言...
-```
-
-### 自定义审核规则
-
-在 `scripts/code_review.py` 中，可以调整检查工具的参数：
+编辑 `scripts/code_review.py` 中的常量：
 
 ```python
-# 调整 Bandit 检查级别
-result = subprocess.run(
-    ["bandit", "-f", "json", "-ll", "-r", code_path],  # -ll 只显示中高级别问题
-    ...
-)
+CORE_PASS = 70   # 通过分数阈值（默认 70）
+SCORE_WARN = 50   # 警告分数阈值（默认 50）
+```
+
+### 自定义恶意代码规则
+
+在 `scripts/code_review.py` 中的 `MALICIOUS_PATTERNS` 列表添加新规则：
+
+```python
+(r"你的正则模式", "描述", "HIGH", "修复建议"),
+```
+
+### 自定义敏感信息规则
+
+在 `SECRET_PATTERNS` 列表添加新规则：
+
+```python
+(r"你的正则模式", "描述"),
 ```
 
 ## 🛠 支持的编程语言
 
-- **Python** (主要支持)
-  - 安全检测: Bandit
-  - 代码风格: Ruff
-  - Bug 检测: Pylint
-
-未来计划支持：
-- JavaScript/TypeScript
-- Java
-- Go
+| 语言 | 安全检测 | 风格检查 | Bug 检测 |
+|------|----------|----------|----------|
+| Python | ✅ Bandit + 模式匹配 | ✅ Ruff | ✅ Pylint |
+| JavaScript | ✅ 模式匹配 | ⏳ 计划中 | ⏳ 计划中 |
+| Java | ✅ 模式匹配 | ⏳ 计划中 | ⏳ 计划中 |
+| Go | ✅ 模式匹配 | ⏳ 计划中 | ⏳ 计划中 |
 
 ## 📝 开发
 
 ### 本地测试
 
 ```bash
-# 安装依赖
-pip install ruff pylint bandit safety
+pip install ruff pylint bandit
 
-# 运行审核脚本
+# 设置事件文件路径（模拟 GitHub Actions）
+export GITHUB_EVENT_PATH=/path/to/event.json
+export EVENT_NAME=issues   # 或 pull_request
+export GITHUB_TOKEN=xxx  # 可选
+
 python scripts/code_review.py
 ```
 
